@@ -11,7 +11,6 @@ public class NYPDArrestsDataReducer extends Reducer<NullWritable, Text, NullWrit
 
         for (Text value : values) {
             context.write(NullWritable.get(), value);
-            break;
         }
     }
 }
