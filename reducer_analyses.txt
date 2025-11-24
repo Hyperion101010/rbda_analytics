@@ -1,0 +1,96 @@
+NYPD ARRESTS DATA - REDUCER ANALYSES
+=====================================
+
+1. COUNT ARRESTS PER DAY
+   - Mapper key: date (YYYY-MM-DD format)
+   - Reducer: sum counts → date, total_arrests
+   - Output: date, total_arrests
+
+2. COUNT ARRESTS PER BOROUGH
+   - Mapper key: borough
+   - Reducer: sum → borough, total_arrests
+   - Output: borough, total_arrests
+
+3. DAILY ARRESTS PER BOROUGH
+   - Mapper key: date + "\t" + borough (composite key)
+   - Reducer: sum → date, borough, total_arrests
+   - Output: date, borough, total_arrests
+
+4. ARRESTS PER ZIP CODE
+   - Mapper key: ZIP_CODE
+   - Reducer: sum → ZIP_CODE, total_arrests
+   - Output: ZIP_CODE, total_arrests
+
+5. OFFENSE DISTRIBUTION BY ZIP CODE
+   - Mapper key: ZIP_CODE + "\t" + Category_of_offense
+   - Reducer: sum → count of each offense category per ZIP
+   - Output: ZIP_CODE, Category_of_offense, total_arrests
+
+6. OFFENSE DISTRIBUTION BY BOROUGH
+   - Mapper key: borough + "\t" + Category_of_offense
+   - Reducer: sum → count of each offense category per borough
+   - Output: borough, Category_of_offense, total_arrests
+
+7. AGE GROUP DISTRIBUTION
+   - Mapper key: AGE_GROUP (normalized: "0-17", "18-24", "25-44", "45-64", etc.)
+   - Reducer: sum → how many arrests per age group
+   - Output: AGE_GROUP, total_arrests
+
+8. MIN / MAX / AVG AGE PER ZIP CODE
+   - Mapper key: ZIP_CODE
+   - Mapper value: AGE_MIN, AGE_MAX (from extracted columns)
+   - Reducer: compute min(AGE_MIN), max(AGE_MAX), avg((AGE_MIN+AGE_MAX)/2)
+   - Output: ZIP_CODE, min_age, max_age, avg_age
+
+9. MIN / MAX / AVG AGE PER BOROUGH
+   - Mapper key: borough
+   - Mapper value: AGE_MIN, AGE_MAX (from extracted columns)
+   - Reducer: compute min(AGE_MIN), max(AGE_MAX), avg((AGE_MIN+AGE_MAX)/2)
+   - Output: borough, min_age, max_age, avg_age
+
+10. OFFENSE TRENDS OVER TIME
+    - Mapper key: year + "\t" + Category_of_offense
+    - Reducer: sum → how each offense category changes by year
+    - Output: year, Category_of_offense, total_arrests
+
+11. PRECINCT-LEVEL STATS
+    - Mapper key: ARREST_PRECINCT
+    - Reducer: total arrests, maybe also break down by category/age if you emit composite values
+    - Output: ARREST_PRECINCT, total_arrests
+    - Optional: ARREST_PRECINCT, Category_of_offense, total_arrests
+    - Optional: ARREST_PRECINCT, AGE_GROUP, total_arrests
+
+12. TOP-K ZIP CODES PER BOROUGH BY ARREST COUNT
+    - Mapper key: borough
+    - Mapper value: ZIP_CODE (emit multiple times per record)
+    - Reducer: get all ZIP codes in that borough, count per ZIP, compute top K (e.g., top 5)
+    - Output: borough, ZIP_CODE, total_arrests (top K only)
+
+13. JURISDICTION CODE STATISTICS
+    - Mapper key: JURISDICTION_CODE
+    - Reducer: sum → total arrests per jurisdiction
+    - Output: JURISDICTION_CODE, total_arrests
+
+14. OFFENSE TYPE BY AGE GROUP
+    - Mapper key: AGE_GROUP + "\t" + Category_of_offense
+    - Reducer: sum → count of each offense category per age group
+    - Output: AGE_GROUP, Category_of_offense, total_arrests
+
+15. ARRESTS BY PERP_SEX
+    - Mapper key: PERP_SEX
+    - Reducer: sum → total arrests by sex
+    - Output: PERP_SEX, total_arrests
+
+16. ARRESTS BY PERP_SEX AND BOROUGH
+    - Mapper key: borough + "\t" + PERP_SEX
+    - Reducer: sum → total arrests by sex per borough
+    - Output: borough, PERP_SEX, total_arrests
+
+NOTES:
+- All mappers should read from the processed NYPDArrestsData output (key-value format)
+- Date format in processed data: "HH:mm:ss MM/dd/yyyy" - need to extract YYYY-MM-DD or year
+- AGE_MIN and AGE_MAX are already extracted in NYPDArrestsDataMapper
+- ZIP_CODE may be null for some records (if lat/long conversion failed)
+- Category_of_offense values: Misdemeanor, Felony, Violation
+- Borough values: Brooklyn, Queens, Manhattan, Bronx, Staten Island
+
