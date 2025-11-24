@@ -13,12 +13,13 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Mapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, Text, Text> {
+public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, NullWritable, Text> {
 
     private static final Map<String, String> SCHEMA = Map.ofEntries(
         Map.entry("ARREST_KEY", "TEXT"),
@@ -63,6 +64,27 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, Text, Text
         "F", "Felony",
         "V", "Violation"
     );
+
+
+    private static final String[] OUTPUT_COLUMNS = new String[] {
+        "ARREST_KEY",
+        "date",
+        "OFNS_DESC",
+        "PD_CD",
+        "KY_CD",
+        "Category_of_offense",
+        "borough",
+        "ARREST_PRECINCT",
+        "AGE_GROUP",
+        "AGE_MIN",
+        "AGE_MAX",
+        "PERP_SEX",
+        "JURISDICTION_CODE",
+        "ZIP_CODE",
+        "PD_DESC",
+        "LAW_CODE",
+        "LAW_CAT_CD"
+    };
 
     private List<String> columnNames;
     private ZipCodeLookup zipCodeLookup;
@@ -153,20 +175,25 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, Text, Text
             cleanedRecord.put("ZIP_CODE", zipCode);
         }
 
-        StringBuilder output = new StringBuilder();
-        boolean first = true;
-        for (Map.Entry<String, String> entry : cleanedRecord.entrySet()) {
-            if (!first) {
-                output.append(",");
+        // Build CSV row with fixed column order
+        StringBuilder csvLine = new StringBuilder();
+        for (int i = 0; i < OUTPUT_COLUMNS.length; i++) {
+            String col = OUTPUT_COLUMNS[i];
+            String val = cleanedRecord.getOrDefault(col, "");
+            
+            // Escape commas and quotes in values
+            if (val.contains(",") || val.contains("\"") || val.contains("\n")) {
+                val = "\"" + val.replace("\"", "\"\"") + "\"";
             }
-            output.append(entry.getKey()).append(":").append(entry.getValue());
-            first = false;
+            
+            if (i > 0) {
+                csvLine.append(",");
+            }
+            csvLine.append(val);
         }
 
-        String arrestKey = cleanedRecord.get("ARREST_KEY");
-        if (arrestKey != null && !arrestKey.isEmpty()) {
-            context.write(new Text(arrestKey), new Text(output.toString()));
-        }
+        // Output CSV row (ignore key - whole row is in the value)
+        context.write(NullWritable.get(), new Text(csvLine.toString()));
     }
 
     private List<String> parseCSVLine(String line) {

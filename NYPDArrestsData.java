@@ -1,4 +1,5 @@
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
@@ -27,13 +28,11 @@ public class NYPDArrestsData {
 
         job.setMapperClass(NYPDArrestsDataMapper.class);
         job.setReducerClass(NYPDArrestsDataReducer.class);
-
         job.setNumReduceTasks(1);
 
-        job.setOutputKeyClass(Text.class);
+        job.setOutputKeyClass(NullWritable.class);
         job.setOutputValueClass(Text.class);
         
         System.exit(job.waitForCompletion(true) ? 0 : 1);
     }
 }
-
