@@ -14,7 +14,7 @@ import org.apache.hadoop.mapreduce.Mapper;
 import com.opencsv.CSVParser;
 import com.opencsv.CSVParserBuilder;
 
-public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, NullWritable, Text> {
+public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, Text, Text> {
 
     private static final Map<String, String> SCHEMA = Map.ofEntries(
         Map.entry("ARREST_KEY", "TEXT"),
@@ -63,12 +63,12 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, NullWritab
 
     private static final String[] OUTPUT_COLUMNS = new String[] {
         "ARREST_KEY",
-        "date",
+        "ARREST_DATE",
         "OFNS_DESC",
         "PD_CD",
         "KY_CD",
-        "Category_of_offense",
-        "borough",
+        "LAW_CAT_CD",
+        "ARREST_BORO",
         "ARREST_PRECINCT",
         "AGE_GROUP",
         "AGE_MIN",
@@ -77,8 +77,7 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, NullWritab
         "JURISDICTION_CODE",
         "ZIP_CODE",
         "PD_DESC",
-        "LAW_CODE",
-        "LAW_CAT_CD"
+        "LAW_CODE"
     };
 
     // Reference to column index mapping
@@ -143,26 +142,71 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, NullWritab
             }
         }
 
+        // Track statistics - check if record will be dropped
+        String originalDate = record.get("ARREST_DATE");
+        boolean willBeDropped = false;
+        String dropReason = "";
+        
+        if (record.get("ARREST_KEY") == null || record.get("ARREST_KEY").isEmpty()) {
+            willBeDropped = true;
+            dropReason = "MISSING_ARREST_KEY";
+        } else if (originalDate == null || originalDate.isEmpty()) {
+            willBeDropped = true;
+            dropReason = "MISSING_DATE";
+        } else {
+            try {
+                LocalDateTime dateTime;
+                if (originalDate.length() == 10) {
+                    dateTime = LocalDateTime.parse(originalDate + " 00:00:00", 
+                        DateTimeFormatter.ofPattern("MM/dd/yyyy HH:mm:ss"));
+                } else {
+                    dateTime = LocalDateTime.parse(originalDate, 
+                        DateTimeFormatter.ofPattern("MM/dd/yyyy HH:mm:ss"));
+                }
+                if (dateTime.isBefore(MIN_DATE)) {
+                    willBeDropped = true;
+                    dropReason = "DATE_BEFORE_2015";
+                }
+            } catch (Exception e) {
+                willBeDropped = true;
+                dropReason = "INVALID_DATE";
+            }
+        }
+
         Map<String, String> cleanedRecord = validateAndCleanRecord(record);
         
         if (cleanedRecord == null) {
+            context.getCounter("STATS", "DROPPED_ROWS").increment(1);
+            if (!dropReason.isEmpty()) {
+                context.getCounter("STATS", "DROP_REASON_" + dropReason).increment(1);
+            }
             return;
         }
 
         // Filter by date > 2014 (only 2015 and later)
-        String dateStr = cleanedRecord.get("date");
+        String dateStr = cleanedRecord.get("ARREST_DATE");
         if (dateStr == null || dateStr.isEmpty()) {
+            context.getCounter("STATS", "DROPPED_ROWS").increment(1);
+            context.getCounter("STATS", "DROP_REASON_MISSING_DATE").increment(1);
             return;
         }
 
+        LocalDateTime arrestDate;
         try {
-            LocalDateTime arrestDate = LocalDateTime.parse(dateStr, OUTPUT_DATE_FORMATTER);
+            arrestDate = LocalDateTime.parse(dateStr, OUTPUT_DATE_FORMATTER);
             if (arrestDate.isBefore(MIN_DATE)) {
+                context.getCounter("STATS", "DROPPED_ROWS").increment(1);
+                context.getCounter("STATS", "DROP_REASON_DATE_BEFORE_2015").increment(1);
                 return;
             }
         } catch (DateTimeParseException e) {
+            context.getCounter("STATS", "DROPPED_ROWS").increment(1);
+            context.getCounter("STATS", "DROP_REASON_INVALID_DATE").increment(1);
             return;
         }
+        
+        // Record passed validation
+        context.getCounter("STATS", "TOTAL_ROWS").increment(1);
 
         String latitude = cleanedRecord.get("Latitude");
         String longitude = cleanedRecord.get("Longitude");
@@ -181,8 +225,14 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, NullWritab
 
         cleanedRecord.remove("Latitude");
         cleanedRecord.remove("Longitude");
-        if (zipCode != null) {
+        
+        // Track zipcode lookup statistics
+        boolean zipcodeFound = false;
+        if (zipCode != null && !zipCode.isEmpty()) {
             cleanedRecord.put("ZIP_CODE", zipCode);
+            zipcodeFound = true;
+        } else {
+            context.getCounter("STATS", "ZIPCODE_LOOKUP_FAILED").increment(1);
         }
 
         // Build CSV row with fixed column order
@@ -202,8 +252,25 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, NullWritab
             csvLine.append(val);
         }
 
-        // Output CSV row (ignore key - whole row is in the value)
-        context.write(NullWritable.get(), new Text(csvLine.toString()));
+        // Emit cleaned CSV row with special key for routing (will go through reducer to data output)
+        context.write(new Text("DATA:"), new Text(csvLine.toString()));
+
+        // Emit statistics as key-value pairs for aggregation
+        String year = String.valueOf(arrestDate.getYear());
+        String borough = cleanedRecord.get("ARREST_BORO");
+        String dateStrFormatted = arrestDate.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+        
+        // Crimes per Borough per Year
+        if (borough != null && !borough.isEmpty()) {
+            context.write(
+                new Text("BOROUGH_YEAR:" + borough + ":" + year), 
+                new Text("1"));
+        }
+        
+        // Records per day
+        context.write(
+            new Text("DAILY:" + dateStrFormatted), 
+            new Text("1"));
     }
 
 
@@ -241,7 +308,7 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, NullWritab
                             DateTimeFormatter.ofPattern("MM/dd/yyyy HH:mm:ss"));
                     }
                     String formattedDate = dateTime.format(OUTPUT_DATE_FORMATTER);
-                    cleaned.put("date", formattedDate);
+                    cleaned.put("ARREST_DATE", formattedDate);
                 } catch (DateTimeParseException e) {
                     continue;
                 }
@@ -251,9 +318,9 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, NullWritab
             if (columnName.equals("ARREST_BORO")) {
                 String borough = BORO_MAPPING.get(value.toUpperCase());
                 if (borough != null) {
-                    cleaned.put("borough", borough);
+                    cleaned.put("ARREST_BORO", borough);
                 } else {
-                    cleaned.put("borough", value);
+                    cleaned.put("ARREST_BORO", value);
                 }
                 continue;
             }
@@ -261,9 +328,9 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, NullWritab
             if (columnName.equals("LAW_CAT_CD")) {
                 String category = LAW_CAT_MAPPING.get(value.toUpperCase());
                 if (category != null) {
-                    cleaned.put("Category_of_offense", category);
+                    cleaned.put("LAW_CAT_CD", category);
                 } else {
-                    cleaned.put("Category_of_offense", value);
+                    cleaned.put("LAW_CAT_CD", value);
                 }
                 continue;
             }
@@ -307,7 +374,7 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, NullWritab
             return null;
         }
         
-        if (!cleaned.containsKey("date")) {
+        if (!cleaned.containsKey("ARREST_DATE")) {
             return null;
         }
         
