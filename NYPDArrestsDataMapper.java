@@ -105,10 +105,29 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, Text, Text
             // Log diagnostics via counters (persistent, won't vanish)
             ZipcodeLookup lookup = zipCodeLookup.getZipcodeLookup();
             if (lookup != null) {
+                // File opening status
+                if (lookup.isFileOpenedSuccessfully()) {
+                    context.getCounter("ZIPCODE_LOOKUP", "FILE_OPENED_SUCCESS").increment(1);
+                } else {
+                    context.getCounter("ZIPCODE_LOOKUP", "FILE_OPENED_FAILED").increment(1);
+                }
+                
+                // Headers status
+                if (lookup.isHeadersFound()) {
+                    context.getCounter("ZIPCODE_LOOKUP", "HEADERS_FOUND").increment(1);
+                } else {
+                    context.getCounter("ZIPCODE_LOOKUP", "HEADERS_NOT_FOUND").increment(1);
+                }
+                
+                // Polygon loading stats
                 context.getCounter("ZIPCODE_LOOKUP", "POLYGONS_LOADED").increment(lookup.getLoadedPolygonCount());
+                context.getCounter("ZIPCODE_LOOKUP", "WKT_PARSE_FAILURES").increment(lookup.getWktParseFailures());
+                context.getCounter("ZIPCODE_LOOKUP", "INVALID_GEOMETRIES_FIXED").increment(lookup.getInvalidGeometriesFixed());
+                context.getCounter("ZIPCODE_LOOKUP", "EMPTY_ROWS_SKIPPED").increment(lookup.getEmptyOrNullRowsSkipped());
+                
+                // File source info
                 String fileSource = lookup.getFileSource();
                 if (fileSource != null) {
-                    // Store file source info (Hadoop counters are numeric, so we'll use a flag counter)
                     context.getCounter("ZIPCODE_LOOKUP", "FILE_SOURCE_HDFS").increment(
                         fileSource.startsWith("HDFS") ? 1 : 0);
                     context.getCounter("ZIPCODE_LOOKUP", "FILE_SOURCE_LOCAL").increment(
@@ -118,6 +137,7 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, Text, Text
         } catch (Exception e) {
             // Log error via counter
             context.getCounter("ZIPCODE_LOOKUP", "LOAD_FAILED").increment(1);
+            context.getCounter("ZIPCODE_LOOKUP", "FILE_OPENED_FAILED").increment(1);
             context.getCounter("ZIPCODE_LOOKUP", "POLYGONS_LOADED").increment(0); // Explicitly set to 0
             zipCodeLookup = new ZipCodeLookup();
         }
@@ -261,6 +281,31 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, Text, Text
         // Perform zipcode lookup (Point(lon, lat) - matching Python exactly)
         String zipCode = zipCodeLookup.getZipCode(lat, lon);
         
+        // ========== TEST MODE: Output zipcode lookup diagnostics instead of normal data ==========
+        // Build diagnostic output line
+        String arrestKey = cleanedRecord.getOrDefault("ARREST_KEY", "UNKNOWN");
+        String diagnosticLine = String.format(
+            "ARREST_KEY=%s|LAT=%s|LON=%s|ZIPCODE=%s|FOUND=%s",
+            arrestKey,
+            latitude,
+            longitude,
+            (zipCode != null && !zipCode.isEmpty()) ? zipCode : "NULL",
+            (zipCode != null && !zipCode.isEmpty()) ? "YES" : "NO"
+        );
+        
+        // Emit diagnostic info instead of normal data
+        context.write(new Text("ZIPCODE_TEST:"), new Text(diagnosticLine));
+        
+        // Track counters
+        if (zipCode == null || zipCode.isEmpty()) {
+            context.getCounter("STATS", "ZIPCODE_LOOKUP_FAILED").increment(1);
+            context.getCounter("STATS", "DROP_REASON_ZIPCODE_NOT_FOUND").increment(1);
+        } else {
+            context.getCounter("STATS", "ZIPCODE_LOOKUP_SUCCESS").increment(1);
+        }
+        
+        // ========== COMMENTED OUT: Normal data processing ==========
+        /*
         // Drop if zipcode not found (matching Python: returns None)
         if (zipCode == null || zipCode.isEmpty()) {
             context.getCounter("STATS", "ZIPCODE_LOOKUP_FAILED").increment(1);
@@ -305,6 +350,7 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, Text, Text
         context.write(
             new Text("DAILY:" + dateStrFormatted), 
             new Text("1"));
+        */
     }
 
 

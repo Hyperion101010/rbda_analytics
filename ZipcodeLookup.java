@@ -42,6 +42,11 @@ public class ZipcodeLookup {
     private int loadedPolygonCount = 0;
     private String headersInfo = null;
     private String fileSource = null;
+    private boolean fileOpenedSuccessfully = false;
+    private boolean headersFound = false;
+    private int wktParseFailures = 0;
+    private int invalidGeometriesFixed = 0;
+    private int emptyOrNullRowsSkipped = 0;
 
     /**
      * Load all zipcode polygons from the CSV file.
@@ -58,11 +63,13 @@ public class ZipcodeLookup {
             if (fs.exists(path)) {
                 this.fileSource = "HDFS: " + path.toString();
                 inputStream = fs.open(path);
+                this.fileOpenedSuccessfully = true;
             } else {
                 java.io.File localFile = new java.io.File(csvPath);
                 if (localFile.exists()) {
                     this.fileSource = "LOCAL: " + localFile.getAbsolutePath();
                     inputStream = new java.io.FileInputStream(localFile);
+                    this.fileOpenedSuccessfully = true;
                 } else {
                     throw new IOException("Zipcode CSV file not found in HDFS or local FS: " + csvPath);
                 }
@@ -80,6 +87,7 @@ public class ZipcodeLookup {
             if (records.iterator().hasNext()) {
                 CSVRecord first = records.iterator().next();
                 this.headersInfo = "Headers: " + first.toMap().keySet().toString();
+                this.headersFound = true;
                 // Reset reader since we advanced the iterator
                 reader.close();
                 if (fs.exists(path)) {
@@ -112,6 +120,7 @@ public class ZipcodeLookup {
 
                 if (modZcta == null || modZcta.isEmpty() ||
                     wkt == null || wkt.isEmpty()) {
+                    this.emptyOrNullRowsSkipped++;
                     continue; // skip bad rows
                 }
 
@@ -119,15 +128,17 @@ public class ZipcodeLookup {
                     Geometry geom = wktReader.read(wkt);
 
                     // Ensure geometry is valid (fixes self-intersections, etc.)
-                    if (!geom.isValid()) {
+                    boolean wasInvalid = !geom.isValid();
+                    if (wasInvalid) {
                         geom = geom.buffer(0);
+                        this.invalidGeometriesFixed++;
                     }
 
                     shapes.add(new ZipShape(modZcta, geom));
                     loadedCount++;
                 } catch (Exception e) {
-                    // Log parse failures via counter if available
-                    // Note: Individual WKT parse failures are not critical, so we continue
+                    // Track WKT parse failures
+                    this.wktParseFailures++;
                 }
             }
 
@@ -162,6 +173,26 @@ public class ZipcodeLookup {
 
     public String getFileSource() {
         return fileSource;
+    }
+
+    public boolean isFileOpenedSuccessfully() {
+        return fileOpenedSuccessfully;
+    }
+
+    public boolean isHeadersFound() {
+        return headersFound;
+    }
+
+    public int getWktParseFailures() {
+        return wktParseFailures;
+    }
+
+    public int getInvalidGeometriesFixed() {
+        return invalidGeometriesFixed;
+    }
+
+    public int getEmptyOrNullRowsSkipped() {
+        return emptyOrNullRowsSkipped;
     }
 
     /**
