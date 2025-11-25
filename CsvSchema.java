@@ -26,7 +26,8 @@ public class CsvSchema {
         Map.entry("Y_COORD_CD", 15),
         Map.entry("Latitude", 16),
         Map.entry("Longitude", 17),
-        Map.entry("Lon_Lat", 18)
+        Map.entry("Lon_Lat", 18),
+        Map.entry("ZIPCODE", 19)
     );
     
     public static final int EXPECTED_COLUMN_COUNT = COL.size();

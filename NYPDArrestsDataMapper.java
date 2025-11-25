@@ -35,7 +35,8 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, Text, Text
         Map.entry("Y_COORD_CD", "TEXT"),
         Map.entry("Latitude", "NUMBER"),
         Map.entry("Longitude", "NUMBER"),
-        Map.entry("Lon_Lat", "POINT")
+        Map.entry("Lon_Lat", "POINT"),
+        Map.entry("ZIPCODE", "NUMBER")
     );
 
     private static final Set<String> COLUMNS_TO_DROP = Set.of(
@@ -75,16 +76,15 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, Text, Text
         "AGE_MAX",
         "PERP_SEX",
         "JURISDICTION_CODE",
-        "ZIP_CODE",
         "PD_DESC",
-        "LAW_CODE"
+        "LAW_CODE",
+        "ZIPCODE"
     };
 
     // Reference to column index mapping
     private static final Map<String, Integer> COL = CsvSchema.COL;
     
     private CSVParser csvParser;
-    private ZipCodeLookup zipCodeLookup;
 
     @Override
     protected void setup(Context context) throws IOException, InterruptedException {
@@ -95,16 +95,6 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, Text, Text
                 .withQuoteChar('"')   // handle "quoted, fields"
                 .withEscapeChar('\\') // allow \" inside
                 .build();
-
-        Configuration conf = context.getConfiguration();
-        String zipcodeFile = conf.get("zipcode.bounds.file", "nyc_zip_data_lookup.csv");
-        
-        try {
-            zipCodeLookup = new ZipCodeLookup(zipcodeFile, conf);
-        } catch (Exception e) {
-            System.err.println("Warning: Could not load zipcode CSV file: " + e.getMessage());
-            zipCodeLookup = new ZipCodeLookup();
-        }
     }
 
     @Override
@@ -208,32 +198,17 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, Text, Text
         // Record passed validation
         context.getCounter("STATS", "TOTAL_ROWS").increment(1);
 
-        String latitude = cleanedRecord.get("Latitude");
-        String longitude = cleanedRecord.get("Longitude");
-        String zipCode = null;
-        
-        if (latitude != null && longitude != null && 
-            !latitude.isEmpty() && !longitude.isEmpty() &&
-            !latitude.equals("0") && !longitude.equals("0")) {
-            try {
-                double lat = Double.parseDouble(latitude);
-                double lon = Double.parseDouble(longitude);
-                zipCode = zipCodeLookup.getZipCode(lat, lon);
-            } catch (NumberFormatException e) {
-            }
+        // Validate ZIPCODE - must be NYC zipcode (100xx to 116xx) or drop row
+        String zipcode = cleanedRecord.get("ZIPCODE");
+        if (!isValidNYCZipcode(zipcode)) {
+            context.getCounter("STATS", "DROPPED_ROWS").increment(1);
+            context.getCounter("STATS", "DROP_REASON_INVALID_ZIPCODE").increment(1);
+            return;
         }
 
+        // Remove Latitude and Longitude columns
         cleanedRecord.remove("Latitude");
         cleanedRecord.remove("Longitude");
-        
-        // Track zipcode lookup statistics
-        boolean zipcodeFound = false;
-        if (zipCode != null && !zipCode.isEmpty()) {
-            cleanedRecord.put("ZIP_CODE", zipCode);
-            zipcodeFound = true;
-        } else {
-            context.getCounter("STATS", "ZIPCODE_LOOKUP_FAILED").increment(1);
-        }
 
         // Build CSV row with fixed column order
         StringBuilder csvLine = new StringBuilder();
@@ -418,27 +393,26 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, Text, Text
     }
 
     /**
-     * Wrapper class for ZipcodeLookup to maintain compatibility with existing code.
-     * Uses JTS point-in-polygon lookup instead of bounding box.
+     * Validates if a zipcode is a valid NYC zipcode.
+     * NYC zipcodes fall within the range 10000-11699 (100xx to 116xx).
+     * @param zipcode the zipcode string to validate
+     * @return true if zipcode is valid NYC zipcode, false otherwise (including null/empty)
      */
-    private static class ZipCodeLookup {
-        private ZipcodeLookup zipcodeLookup;
-
-        public ZipCodeLookup() {
-            this.zipcodeLookup = new ZipcodeLookup();
+    private boolean isValidNYCZipcode(String zipcode) {
+        // Drop if null or empty
+        if (zipcode == null || zipcode.trim().isEmpty()) {
+            return false;
         }
 
-        public ZipCodeLookup(String csvFilePath, Configuration conf) throws IOException {
-            try {
-                this.zipcodeLookup = new ZipcodeLookup(csvFilePath, conf);
-            } catch (Exception e) {
-                System.err.println("Warning: Could not load zipcode CSV file: " + e.getMessage());
-                this.zipcodeLookup = new ZipcodeLookup();
-            }
-        }
-
-        public String getZipCode(double latitude, double longitude) {
-            return zipcodeLookup.findZipcode(latitude, longitude);
+        try {
+            // Parse as integer
+            int zip = Integer.parseInt(zipcode.trim());
+            
+            // NYC zipcodes: 10000 to 11699 (100xx to 116xx)
+            return zip >= 10000 && zip <= 11699;
+        } catch (NumberFormatException e) {
+            // Not a valid integer, drop the row
+            return false;
         }
     }
 }
