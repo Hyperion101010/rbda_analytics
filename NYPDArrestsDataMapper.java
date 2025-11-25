@@ -208,25 +208,45 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, Text, Text
         // Record passed validation
         context.getCounter("STATS", "TOTAL_ROWS").increment(1);
 
+        // Zipcode lookup - matching Python logic exactly
         String latitude = cleanedRecord.get("Latitude");
         String longitude = cleanedRecord.get("Longitude");
-        String zipCode = null;
-        boolean hasValidCoordinates = false;
-
-        if (latitude != null && longitude != null && 
-            !latitude.isEmpty() && !longitude.isEmpty() &&
-            !latitude.equals("0") && !longitude.equals("0")) {
-            try {
-                double lat = Double.parseDouble(latitude);
-                double lon = Double.parseDouble(longitude);
-                zipCode = zipCodeLookup.getZipCode(lat, lon);
-                hasValidCoordinates = true;
-            } catch (NumberFormatException e) {
-                // Invalid lat/lon format
-            }
+        
+        // Check if lat/lon are missing (equivalent to pd.isna in Python)
+        if (latitude == null || longitude == null || 
+            latitude.trim().isEmpty() || longitude.trim().isEmpty() ||
+            latitude.trim().equalsIgnoreCase("nan") || longitude.trim().equalsIgnoreCase("nan")) {
+            context.getCounter("STATS", "ZIPCODE_LOOKUP_FAILED").increment(1);
+            context.getCounter("STATS", "DROPPED_ROWS").increment(1);
+            context.getCounter("STATS", "DROP_REASON_MISSING_COORDINATES").increment(1);
+            return;
         }
-
-        if (!hasValidCoordinates || zipCode == null || zipCode.isEmpty()) {
+        
+        // Parse coordinates
+        double lat, lon;
+        try {
+            lat = Double.parseDouble(latitude.trim());
+            lon = Double.parseDouble(longitude.trim());
+            
+            // Check for NaN (Java Double.parseDouble doesn't throw for "NaN" string, returns NaN)
+            if (Double.isNaN(lat) || Double.isNaN(lon)) {
+                context.getCounter("STATS", "ZIPCODE_LOOKUP_FAILED").increment(1);
+                context.getCounter("STATS", "DROPPED_ROWS").increment(1);
+                context.getCounter("STATS", "DROP_REASON_MISSING_COORDINATES").increment(1);
+                return;
+            }
+        } catch (NumberFormatException e) {
+            context.getCounter("STATS", "ZIPCODE_LOOKUP_FAILED").increment(1);
+            context.getCounter("STATS", "DROPPED_ROWS").increment(1);
+            context.getCounter("STATS", "DROP_REASON_INVALID_COORDINATE_FORMAT").increment(1);
+            return;
+        }
+        
+        // Perform zipcode lookup (Point(lon, lat) - matching Python exactly)
+        String zipCode = zipCodeLookup.getZipCode(lat, lon);
+        
+        // Drop if zipcode not found (matching Python: returns None)
+        if (zipCode == null || zipCode.isEmpty()) {
             context.getCounter("STATS", "ZIPCODE_LOOKUP_FAILED").increment(1);
             context.getCounter("STATS", "DROPPED_ROWS").increment(1);
             context.getCounter("STATS", "DROP_REASON_ZIPCODE_NOT_FOUND").increment(1);

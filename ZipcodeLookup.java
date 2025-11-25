@@ -1,11 +1,9 @@
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVRecord;
 import org.locationtech.jts.geom.Coordinate;
-import org.locationtech.jts.geom.Envelope;
 import org.locationtech.jts.geom.Geometry;
 import org.locationtech.jts.geom.GeometryFactory;
 import org.locationtech.jts.geom.Point;
-import org.locationtech.jts.index.strtree.STRtree;
 import org.locationtech.jts.io.WKTReader;
 
 import org.apache.hadoop.conf.Configuration;
@@ -38,7 +36,6 @@ public class ZipcodeLookup {
 
     private final List<ZipShape> shapes = new ArrayList<>();
     private final GeometryFactory geometryFactory = new GeometryFactory();
-    private STRtree spatialIndex = null;  // Spatial index for O(log n) lookups
 
     /**
      * Load all zipcode polygons from the CSV file.
@@ -91,15 +88,8 @@ public class ZipcodeLookup {
                 }
             }
             
-            // Build spatial index for fast lookups (O(log n) instead of O(n))
-            if (!shapes.isEmpty()) {
-                spatialIndex = new STRtree();
-                for (ZipShape shape : shapes) {
-                    spatialIndex.insert(shape.geometry.getEnvelopeInternal(), shape);
-                }
-                // Build the index (required before querying)
-                spatialIndex.build();
-            }
+            // Note: Using simple linear search to match Python implementation exactly
+            // Python code: for zip_code, poly in zip_polygons: if poly.contains(point): return zip_code
         } finally {
             if (inputStream != null) {
                 inputStream.close();
@@ -116,38 +106,25 @@ public class ZipcodeLookup {
 
     /**
      * Look up zipcode for a given latitude and longitude.
-     * Uses spatial index (STRtree) for O(log n) average case performance.
+     * Matches Python implementation: simple linear search through all polygons.
+     * Python: for zip_code, poly in zip_polygons: if poly.contains(point): return zip_code
      * NOTE: WKT is in (lon, lat), so we must create Point(lon, lat).
      * @param latitude latitude in decimal degrees (WGS84)
      * @param longitude longitude in decimal degrees (WGS84)
      * @return zipcode string if found, null otherwise
      */
     public String findZipcode(double latitude, double longitude) {
-        // JTS uses x = lon, y = lat
+        // Create Point(lon, lat) - matching Python: Point(lon, lat)
         Point p = geometryFactory.createPoint(new Coordinate(longitude, latitude));
 
-        // Use spatial index if available (O(log n) average case)
-        if (spatialIndex != null) {
-            Envelope queryEnv = new Envelope(longitude, longitude, latitude, latitude);
-            @SuppressWarnings("unchecked")
-            List<ZipShape> candidates = spatialIndex.query(queryEnv);
-            
-            // Check candidates for exact containment
-            for (ZipShape shape : candidates) {
-                if (shape.geometry.contains(p)) {
-                    return shape.zipcode;
-                }
-            }
-        } else {
-            // Fallback to linear search if index not built (shouldn't happen normally)
-            for (ZipShape shape : shapes) {
-                if (shape.geometry.contains(p)) {
-                    return shape.zipcode;
-                }
+        // Simple linear search through all polygons (matching Python exactly)
+        for (ZipShape shape : shapes) {
+            if (shape.geometry.contains(p)) {
+                return shape.zipcode;
             }
         }
 
-        // Not found
+        // Not found (matching Python: returns None)
         return null;
     }
 }
