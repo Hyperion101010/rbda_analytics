@@ -101,12 +101,24 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, Text, Text
         
         try {
             zipCodeLookup = new ZipCodeLookup(zipcodeFile, conf);
-            System.err.println("Successfully initialized ZipCodeLookup with file: " + zipcodeFile);
+            
+            // Log diagnostics via counters (persistent, won't vanish)
+            ZipcodeLookup lookup = zipCodeLookup.getZipcodeLookup();
+            if (lookup != null) {
+                context.getCounter("ZIPCODE_LOOKUP", "POLYGONS_LOADED").increment(lookup.getLoadedPolygonCount());
+                String fileSource = lookup.getFileSource();
+                if (fileSource != null) {
+                    // Store file source info (Hadoop counters are numeric, so we'll use a flag counter)
+                    context.getCounter("ZIPCODE_LOOKUP", "FILE_SOURCE_HDFS").increment(
+                        fileSource.startsWith("HDFS") ? 1 : 0);
+                    context.getCounter("ZIPCODE_LOOKUP", "FILE_SOURCE_LOCAL").increment(
+                        fileSource.startsWith("LOCAL") ? 1 : 0);
+                }
+            }
         } catch (Exception e) {
-            System.err.println("ERROR: Could not load zipcode CSV file: " + zipcodeFile);
-            System.err.println("Exception: " + e.getMessage());
-            e.printStackTrace();
-            System.err.println("Falling back to empty ZipCodeLookup - ALL ZIPCODE LOOKUPS WILL FAIL!");
+            // Log error via counter
+            context.getCounter("ZIPCODE_LOOKUP", "LOAD_FAILED").increment(1);
+            context.getCounter("ZIPCODE_LOOKUP", "POLYGONS_LOADED").increment(0); // Explicitly set to 0
             zipCodeLookup = new ZipCodeLookup();
         }
     }
@@ -461,6 +473,10 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, Text, Text
 
         public String getZipCode(double latitude, double longitude) {
             return zipcodeLookup.findZipcode(latitude, longitude);
+        }
+
+        public ZipcodeLookup getZipcodeLookup() {
+            return zipcodeLookup;
         }
     }
 }
