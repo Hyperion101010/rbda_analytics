@@ -1,9 +1,11 @@
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVRecord;
 import org.locationtech.jts.geom.Coordinate;
+import org.locationtech.jts.geom.Envelope;
 import org.locationtech.jts.geom.Geometry;
 import org.locationtech.jts.geom.GeometryFactory;
 import org.locationtech.jts.geom.Point;
+import org.locationtech.jts.index.strtree.STRtree;
 import org.locationtech.jts.io.WKTReader;
 
 import org.apache.hadoop.conf.Configuration;
@@ -36,6 +38,7 @@ public class ZipcodeLookup {
 
     private final List<ZipShape> shapes = new ArrayList<>();
     private final GeometryFactory geometryFactory = new GeometryFactory();
+    private STRtree spatialIndex = null;  // Spatial index for O(log n) lookups
 
     /**
      * Load all zipcode polygons from the CSV file.
@@ -87,6 +90,16 @@ public class ZipcodeLookup {
                             + modZcta + ": " + e.getMessage());
                 }
             }
+            
+            // Build spatial index for fast lookups (O(log n) instead of O(n))
+            if (!shapes.isEmpty()) {
+                spatialIndex = new STRtree();
+                for (ZipShape shape : shapes) {
+                    spatialIndex.insert(shape.geometry.getEnvelopeInternal(), shape);
+                }
+                // Build the index (required before querying)
+                spatialIndex.build();
+            }
         } finally {
             if (inputStream != null) {
                 inputStream.close();
@@ -103,6 +116,7 @@ public class ZipcodeLookup {
 
     /**
      * Look up zipcode for a given latitude and longitude.
+     * Uses spatial index (STRtree) for O(log n) average case performance.
      * NOTE: WKT is in (lon, lat), so we must create Point(lon, lat).
      * @param latitude latitude in decimal degrees (WGS84)
      * @param longitude longitude in decimal degrees (WGS84)
@@ -112,9 +126,24 @@ public class ZipcodeLookup {
         // JTS uses x = lon, y = lat
         Point p = geometryFactory.createPoint(new Coordinate(longitude, latitude));
 
-        for (ZipShape shape : shapes) {
-            if (shape.geometry.contains(p)) {
-                return shape.zipcode;
+        // Use spatial index if available (O(log n) average case)
+        if (spatialIndex != null) {
+            Envelope queryEnv = new Envelope(longitude, longitude, latitude, latitude);
+            @SuppressWarnings("unchecked")
+            List<ZipShape> candidates = spatialIndex.query(queryEnv);
+            
+            // Check candidates for exact containment
+            for (ZipShape shape : candidates) {
+                if (shape.geometry.contains(p)) {
+                    return shape.zipcode;
+                }
+            }
+        } else {
+            // Fallback to linear search if index not built (shouldn't happen normally)
+            for (ZipShape shape : shapes) {
+                if (shape.geometry.contains(p)) {
+                    return shape.zipcode;
+                }
             }
         }
 

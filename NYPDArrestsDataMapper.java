@@ -211,7 +211,8 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, Text, Text
         String latitude = cleanedRecord.get("Latitude");
         String longitude = cleanedRecord.get("Longitude");
         String zipCode = null;
-        
+        boolean hasValidCoordinates = false;
+
         if (latitude != null && longitude != null && 
             !latitude.isEmpty() && !longitude.isEmpty() &&
             !latitude.equals("0") && !longitude.equals("0")) {
@@ -219,29 +220,28 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, Text, Text
                 double lat = Double.parseDouble(latitude);
                 double lon = Double.parseDouble(longitude);
                 zipCode = zipCodeLookup.getZipCode(lat, lon);
+                hasValidCoordinates = true;
             } catch (NumberFormatException e) {
+                // Invalid lat/lon format
             }
         }
 
-        cleanedRecord.remove("Latitude");
-        cleanedRecord.remove("Longitude");
-        
-        // Track zipcode lookup statistics
-        boolean zipcodeFound = false;
-        if (zipCode != null && !zipCode.isEmpty()) {
-            cleanedRecord.put("ZIP_CODE", zipCode);
-            zipcodeFound = true;
-        } else {
+        if (!hasValidCoordinates || zipCode == null || zipCode.isEmpty()) {
             context.getCounter("STATS", "ZIPCODE_LOOKUP_FAILED").increment(1);
+            context.getCounter("STATS", "DROPPED_ROWS").increment(1);
+            context.getCounter("STATS", "DROP_REASON_ZIPCODE_NOT_FOUND").increment(1);
+            return;
         }
 
-        // Build CSV row with fixed column order
+        cleanedRecord.put("ZIP_CODE", zipCode);
+        cleanedRecord.remove("Latitude");
+        cleanedRecord.remove("Longitude");
+
         StringBuilder csvLine = new StringBuilder();
         for (int i = 0; i < OUTPUT_COLUMNS.length; i++) {
             String col = OUTPUT_COLUMNS[i];
             String val = cleanedRecord.getOrDefault(col, "");
             
-            // Escape commas and quotes in values
             if (val.contains(",") || val.contains("\"") || val.contains("\n")) {
                 val = "\"" + val.replace("\"", "\"\"") + "\"";
             }
@@ -252,10 +252,8 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, Text, Text
             csvLine.append(val);
         }
 
-        // Emit cleaned CSV row with special key for routing (will go through reducer to data output)
         context.write(new Text("DATA:"), new Text(csvLine.toString()));
 
-        // Emit statistics as key-value pairs for aggregation
         String year = String.valueOf(arrestDate.getYear());
         String borough = cleanedRecord.get("ARREST_BORO");
         String dateStrFormatted = arrestDate.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
