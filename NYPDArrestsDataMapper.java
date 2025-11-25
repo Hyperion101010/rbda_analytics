@@ -81,20 +81,40 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, Text, Text
         "ZIPCODE"
     };
 
-    // Reference to column index mapping
     private static final Map<String, Integer> COL = CsvSchema.COL;
     
     private CSVParser csvParser;
+    private ZipcodeLookup zipcodeLookup;
 
     @Override
     protected void setup(Context context) throws IOException, InterruptedException {
         super.setup(context);
 
         csvParser = new CSVParserBuilder()
-                .withSeparator(',')   // standard CSV
-                .withQuoteChar('"')   // handle "quoted, fields"
-                .withEscapeChar('\\') // allow \" inside
+                .withSeparator(',')
+                .withQuoteChar('"')
+                .withEscapeChar('\\')
                 .build();
+
+        // Load zipcode lookup polygons - REQUIRED, fail if not found
+        Configuration conf = context.getConfiguration();
+        String zipcodeFile = conf.get("zipcode.bounds.file");
+        
+        System.out.println("=== MAPPER ZIPCODE CONFIGURATION ===");
+        System.out.println("Mapper received zipcode.bounds.file = " + zipcodeFile);
+        System.out.println("====================================");
+        
+        if (zipcodeFile == null || zipcodeFile.isEmpty()) {
+            throw new IOException("zipcode.bounds.file configuration parameter is required. " +
+                "Provide it using: -D zipcode.bounds.file=<path>");
+        }
+        
+        try {
+            zipcodeLookup = new ZipcodeLookup(zipcodeFile, conf);
+        } catch (IOException e) {
+            throw new IOException("Failed to load zipcode CSV file: " + zipcodeFile + 
+                ". Error: " + e.getMessage(), e);
+        }
     }
 
     @Override
@@ -106,6 +126,7 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, Text, Text
         }
 
         if (key.get() == 0 && line.startsWith("ARREST_KEY,")) {
+            // skip processing of the csv initial line that might contain column names.
             return;
         }
 
@@ -116,12 +137,11 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, Text, Text
             return;
         }
 
-        // Safety check: ensure expected number of columns
         if (fields.length < CsvSchema.EXPECTED_COLUMN_COUNT) {
+            // only process those rows which have valid number of columns.
             return;
         }
 
-        // Build record map using column index mapping
         Map<String, String> record = new HashMap<>();
         for (Map.Entry<String, Integer> entry : COL.entrySet()) {
             String colName = entry.getKey();
@@ -132,7 +152,6 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, Text, Text
             }
         }
 
-        // Track statistics - check if record will be dropped
         String originalDate = record.get("ARREST_DATE");
         boolean willBeDropped = false;
         String dropReason = "";
@@ -173,7 +192,7 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, Text, Text
             return;
         }
 
-        // Filter by date > 2014 (only 2015 and later)
+        // Only take records that are after 2015.
         String dateStr = cleanedRecord.get("ARREST_DATE");
         if (dateStr == null || dateStr.isEmpty()) {
             context.getCounter("STATS", "DROPPED_ROWS").increment(1);
@@ -198,19 +217,41 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, Text, Text
         // Record passed validation
         context.getCounter("STATS", "TOTAL_ROWS").increment(1);
 
-        // Validate ZIPCODE - must be NYC zipcode (100xx to 116xx) or drop row
-        String zipcode = cleanedRecord.get("ZIPCODE");
+        // Perform zipcode lookup from Latitude and Longitude
+        String latitude = cleanedRecord.get("Latitude");
+        String longitude = cleanedRecord.get("Longitude");
+        String zipcode = null;
+        
+        if (latitude != null && longitude != null && 
+            !latitude.isEmpty() && !longitude.isEmpty() &&
+            !latitude.equals("0") && !longitude.equals("0")) {
+            try {
+                double lat = Double.parseDouble(latitude.trim());
+                double lon = Double.parseDouble(longitude.trim());
+                
+                // Check for NaN
+                if (!Double.isNaN(lat) && !Double.isNaN(lon)) {
+                    zipcode = zipcodeLookup.findZipcode(lat, lon);
+                }
+            } catch (NumberFormatException e) {
+                // Invalid coordinate format
+            }
+        }
+
+        // Validate ZIPCODE - must be NYC zipcode (100xx to 116xx) or drop that particular row.
         if (!isValidNYCZipcode(zipcode)) {
             context.getCounter("STATS", "DROPPED_ROWS").increment(1);
             context.getCounter("STATS", "DROP_REASON_INVALID_ZIPCODE").increment(1);
             return;
         }
 
-        // Remove Latitude and Longitude columns
+        // Add ZIPCODE to cleaned record
+        cleanedRecord.put("ZIPCODE", zipcode);
+        
+        // No need to include lat and long if we already have valid zipcode.
         cleanedRecord.remove("Latitude");
         cleanedRecord.remove("Longitude");
 
-        // Build CSV row with fixed column order
         StringBuilder csvLine = new StringBuilder();
         for (int i = 0; i < OUTPUT_COLUMNS.length; i++) {
             String col = OUTPUT_COLUMNS[i];
@@ -227,10 +268,10 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, Text, Text
             csvLine.append(val);
         }
 
-        // Emit cleaned CSV row with special key for routing (will go through reducer to data output)
+        // This will go in data output.
         context.write(new Text("DATA:"), new Text(csvLine.toString()));
 
-        // Emit statistics as key-value pairs for aggregation
+        // Map Reduce some general statistics of the data.
         String year = String.valueOf(arrestDate.getYear());
         String borough = cleanedRecord.get("ARREST_BORO");
         String dateStrFormatted = arrestDate.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
@@ -392,26 +433,18 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, Text, Text
         return ageGroup.trim();
     }
 
-    /**
-     * Validates if a zipcode is a valid NYC zipcode.
-     * NYC zipcodes fall within the range 10000-11699 (100xx to 116xx).
-     * @param zipcode the zipcode string to validate
-     * @return true if zipcode is valid NYC zipcode, false otherwise (including null/empty)
-     */
     private boolean isValidNYCZipcode(String zipcode) {
-        // Drop if null or empty
         if (zipcode == null || zipcode.trim().isEmpty()) {
             return false;
         }
 
         try {
-            // Parse as integer
             int zip = Integer.parseInt(zipcode.trim());
             
             // NYC zipcodes: 10000 to 11699 (100xx to 116xx)
             return zip >= 10000 && zip <= 11699;
         } catch (NumberFormatException e) {
-            // Not a valid integer, drop the row
+            // If zipcode is Nan or Null or anything, this check will return false.
             return false;
         }
     }

@@ -10,8 +10,8 @@ import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
 public class NYPDArrestsData {
     public static void main(String[] args) throws Exception {
         
-        if (args.length != 2 && args.length != 3) {
-            System.err.println("Usage: NYPDArrestsData <input path> <output path> [zipcode_bounds_file]");
+        if (args.length != 3) {
+            System.err.println("Usage: NYPDArrestsData <input path> <output path> <zipcode lookup file>");
             System.exit(-1);
         }
 
@@ -19,14 +19,21 @@ public class NYPDArrestsData {
         job.setJarByClass(NYPDArrestsData.class);
         job.setJobName("NYPD Arrests Data Processing");
         
+        // Set zipcode file path in configuration
+        System.out.println("=== ZIPCODE FILE CONFIGURATION ===");
+        System.out.println("Before setting: zipcode.bounds.file = " + 
+            job.getConfiguration().get("zipcode.bounds.file"));
+        System.out.println("Setting zipcode file path from args[2]: " + args[2]);
+        
+        job.getConfiguration().set("zipcode.bounds.file", args[2]);
+        
+        System.out.println("After setting: zipcode.bounds.file = " + 
+            job.getConfiguration().get("zipcode.bounds.file"));
+        System.out.println("===================================");
+        System.out.println();
+        
         FileInputFormat.addInputPath(job, new Path(args[0]));
         FileOutputFormat.setOutputPath(job, new Path(args[1]));
-
-        if (args.length == 3) {
-            job.getConfiguration().set("zipcode.bounds.file", args[2]);
-        } else {
-            job.getConfiguration().set("zipcode.bounds.file", "nyc_zip_data_lookup.csv");
-        }
 
         job.setMapperClass(NYPDArrestsDataMapper.class);
         job.setReducerClass(NYPDArrestsDataReducer.class);
@@ -45,14 +52,13 @@ public class NYPDArrestsData {
         boolean success = job.waitForCompletion(true);
         
         if (success) {
-            // Print counter summaries
-            System.out.println("\n=== PREPROCESSING STATISTICS ===");
+            System.out.println("\n=== STATISTICS ===");
             System.out.println("Total Rows Processed: " + 
                 job.getCounters().findCounter("STATS", "TOTAL_ROWS").getValue());
             System.out.println("Total Rows Dropped: " + 
                 job.getCounters().findCounter("STATS", "DROPPED_ROWS").getValue());
-            System.out.println("Zipcode Lookup Failed: " + 
-                job.getCounters().findCounter("STATS", "ZIPCODE_LOOKUP_FAILED").getValue());
+            System.out.println("Invalid ZIPCODEs: " + 
+                job.getCounters().findCounter("STATS", "INVALID_ZIPCODES").getValue());
         }
         
         System.exit(success ? 0 : 1);
