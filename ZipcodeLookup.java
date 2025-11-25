@@ -48,6 +48,12 @@ public class ZipcodeLookup {
         FileSystem fs = FileSystem.get(conf);
         Path path = new Path(csvPath);
 
+        // Debug: Print path and working directory
+        System.err.println(
+            "ZipcodeLookup running in task, csvPath=" + csvPath +
+            ", fsWorkingDir=" + fs.getWorkingDirectory()
+        );
+
         InputStream inputStream = null;
         try {
             if (fs.exists(path)) {
