@@ -1,23 +1,18 @@
 import java.io.IOException;
-import java.io.InputStream;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Mapper;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.opencsv.CSVParser;
+import com.opencsv.CSVParserBuilder;
 
 public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, NullWritable, Text> {
 
@@ -86,20 +81,29 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, NullWritab
         "LAW_CAT_CD"
     };
 
-    private List<String> columnNames;
+    // Reference to column index mapping
+    private static final Map<String, Integer> COL = CsvSchema.COL;
+    
+    private CSVParser csvParser;
     private ZipCodeLookup zipCodeLookup;
 
     @Override
     protected void setup(Context context) throws IOException, InterruptedException {
         super.setup(context);
 
+        csvParser = new CSVParserBuilder()
+                .withSeparator(',')   // standard CSV
+                .withQuoteChar('"')   // handle "quoted, fields"
+                .withEscapeChar('\\') // allow \" inside
+                .build();
+
         Configuration conf = context.getConfiguration();
-        String zipcodeFile = conf.get("zipcode.bounds.file", "nyc_zipcode_bounds.json");
+        String zipcodeFile = conf.get("zipcode.bounds.file", "nyc_zip_data_lookup.csv");
         
         try {
             zipCodeLookup = new ZipCodeLookup(zipcodeFile, conf);
         } catch (Exception e) {
-            System.err.println("Warning: Could not load zipcode bounds file: " + e.getMessage());
+            System.err.println("Warning: Could not load zipcode CSV file: " + e.getMessage());
             zipCodeLookup = new ZipCodeLookup();
         }
     }
@@ -112,25 +116,31 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, NullWritab
             return;
         }
 
-        List<String> fields = parseCSVLine(line);
-        
-        if (key.get() == 0) {
-            columnNames = new ArrayList<>(fields);
-            for (int i = 0; i < columnNames.size(); i++) {
-                columnNames.set(i, columnNames.get(i).replaceAll("^\"|\"$", ""));
-            }
+        if (key.get() == 0 && line.startsWith("ARREST_KEY,")) {
             return;
         }
 
-        if (columnNames == null || fields.size() != columnNames.size()) {
+        String[] fields;
+        try {
+            fields = csvParser.parseLine(line);
+        } catch (Exception e) {
             return;
         }
 
+        // Safety check: ensure expected number of columns
+        if (fields.length < CsvSchema.EXPECTED_COLUMN_COUNT) {
+            return;
+        }
+
+        // Build record map using column index mapping
         Map<String, String> record = new HashMap<>();
-        for (int i = 0; i < columnNames.size(); i++) {
-            String colName = columnNames.get(i);
-            String fieldValue = fields.get(i).replaceAll("^\"|\"$", "").trim();
-            record.put(colName, fieldValue);
+        for (Map.Entry<String, Integer> entry : COL.entrySet()) {
+            String colName = entry.getKey();
+            int colIndex = entry.getValue();
+            if (colIndex < fields.length) {
+                String fieldValue = fields[colIndex].trim();
+                record.put(colName, fieldValue);
+            }
         }
 
         Map<String, String> cleanedRecord = validateAndCleanRecord(record);
@@ -196,27 +206,6 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, NullWritab
         context.write(NullWritable.get(), new Text(csvLine.toString()));
     }
 
-    private List<String> parseCSVLine(String line) {
-        List<String> fields = new ArrayList<>();
-        boolean inQuotes = false;
-        StringBuilder currentField = new StringBuilder();
-        
-        for (int i = 0; i < line.length(); i++) {
-            char c = line.charAt(i);
-            
-            if (c == '"') {
-                inQuotes = !inQuotes;
-            } else if (c == ',' && !inQuotes) {
-                fields.add(currentField.toString());
-                currentField = new StringBuilder();
-            } else {
-                currentField.append(c);
-            }
-        }
-        fields.add(currentField.toString());
-        
-        return fields;
-    }
 
     private Map<String, String> validateAndCleanRecord(Map<String, String> record) {
         Map<String, String> cleaned = new HashMap<>();
@@ -354,91 +343,35 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, NullWritab
             return "0-17";
         }
         
+        if (ageGroup.equals("65+") || ageGroup.equals("65-100")) {
+            return "65-100";
+        }
+        
         return ageGroup.trim();
     }
 
+    /**
+     * Wrapper class for ZipcodeLookup to maintain compatibility with existing code.
+     * Uses JTS point-in-polygon lookup instead of bounding box.
+     */
     private static class ZipCodeLookup {
-        private List<ZipCodeBound> zipCodeBounds;
+        private ZipcodeLookup zipcodeLookup;
 
         public ZipCodeLookup() {
-            this.zipCodeBounds = new ArrayList<>();
+            this.zipcodeLookup = new ZipcodeLookup();
         }
 
-        public ZipCodeLookup(String jsonFilePath, Configuration conf) throws IOException {
-            this.zipCodeBounds = new ArrayList<>();
-            loadZipCodeBounds(jsonFilePath, conf);
-        }
-
-        private void loadZipCodeBounds(String jsonFilePath, Configuration conf) throws IOException {
-            FileSystem fs = FileSystem.get(conf);
-            Path path = new Path(jsonFilePath);
-            
-            InputStream inputStream = null;
+        public ZipCodeLookup(String csvFilePath, Configuration conf) throws IOException {
             try {
-                if (fs.exists(path)) {
-                    inputStream = fs.open(path);
-                } else {
-                    java.io.File localFile = new java.io.File(jsonFilePath);
-                    if (localFile.exists()) {
-                        inputStream = new java.io.FileInputStream(localFile);
-                    } else {
-                        throw new IOException("Zipcode bounds file not found: " + jsonFilePath);
-                    }
-                }
-
-                ObjectMapper mapper = new ObjectMapper();
-                JsonNode rootNode = mapper.readTree(inputStream);
-                JsonNode zipcodesNode = rootNode.get("zipcodes");
-
-                if (zipcodesNode != null && zipcodesNode.isArray()) {
-                    for (JsonNode zipNode : zipcodesNode) {
-                        String zipcode = zipNode.get("zipcode").asText();
-                        JsonNode boundsNode = zipNode.get("bounds");
-                        
-                        if (boundsNode != null) {
-                            double minLat = boundsNode.get("min_lat").asDouble();
-                            double maxLat = boundsNode.get("max_lat").asDouble();
-                            double minLon = boundsNode.get("min_lon").asDouble();
-                            double maxLon = boundsNode.get("max_lon").asDouble();
-                            
-                            zipCodeBounds.add(new ZipCodeBound(zipcode, minLat, maxLat, minLon, maxLon));
-                        }
-                    }
-                }
-            } finally {
-                if (inputStream != null) {
-                    inputStream.close();
-                }
+                this.zipcodeLookup = new ZipcodeLookup(csvFilePath, conf);
+            } catch (Exception e) {
+                System.err.println("Warning: Could not load zipcode CSV file: " + e.getMessage());
+                this.zipcodeLookup = new ZipcodeLookup();
             }
         }
 
         public String getZipCode(double latitude, double longitude) {
-            for (ZipCodeBound bound : zipCodeBounds) {
-                if (bound.contains(latitude, longitude)) {
-                    return bound.zipcode;
-                }
-            }
-            return null;
-        }
-
-        private static class ZipCodeBound {
-            String zipcode;
-            double minLat;
-            double maxLat;
-            double minLon;
-            double maxLon;
-
-            public ZipCodeBound(String zipcode, double minLat, double maxLat, double minLon, double maxLon) {
-                this.zipcode = zipcode;
-                this.minLat = minLat;
-                this.maxLat = maxLat;
-                this.minLon = minLon;
-                this.maxLon = maxLon;
-            }
-
-            public boolean contains(double lat, double lon) {
-                return lat >= minLat && lat <= maxLat && lon >= minLon && lon <= maxLon;
-            }
+            return zipcodeLookup.findZipcode(latitude, longitude);
         }
     }
 }

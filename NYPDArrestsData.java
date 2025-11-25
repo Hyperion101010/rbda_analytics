@@ -23,7 +23,7 @@ public class NYPDArrestsData {
         if (args.length == 3) {
             job.getConfiguration().set("zipcode.bounds.file", args[2]);
         } else {
-            job.getConfiguration().set("zipcode.bounds.file", "nyc_zipcode_bounds.json");
+            job.getConfiguration().set("zipcode.bounds.file", "nyc_zip_data_lookup.csv");
         }
 
         job.setMapperClass(NYPDArrestsDataMapper.class);

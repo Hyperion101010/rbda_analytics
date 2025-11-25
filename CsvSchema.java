@@ -1,0 +1,34 @@
+import java.util.Map;
+
+/**
+ * Column position mapping for NYPD Arrests Data CSV.
+ * Based on header: ARREST_KEY,ARREST_DATE,PD_CD,PD_DESC,KY_CD,OFNS_DESC,LAW_CODE,LAW_CAT_CD,
+ *                  ARREST_BORO,ARREST_PRECINCT,JURISDICTION_CODE,AGE_GROUP,PERP_SEX,PERP_RACE,
+ *                  X_COORD_CD,Y_COORD_CD,Latitude,Longitude,Lon_Lat
+ */
+public class CsvSchema {
+    public static final Map<String, Integer> COL = Map.ofEntries(
+        Map.entry("ARREST_KEY", 0),
+        Map.entry("ARREST_DATE", 1),
+        Map.entry("PD_CD", 2),
+        Map.entry("PD_DESC", 3),
+        Map.entry("KY_CD", 4),
+        Map.entry("OFNS_DESC", 5),
+        Map.entry("LAW_CODE", 6),
+        Map.entry("LAW_CAT_CD", 7),
+        Map.entry("ARREST_BORO", 8),
+        Map.entry("ARREST_PRECINCT", 9),
+        Map.entry("JURISDICTION_CODE", 10),
+        Map.entry("AGE_GROUP", 11),
+        Map.entry("PERP_SEX", 12),
+        Map.entry("PERP_RACE", 13),
+        Map.entry("X_COORD_CD", 14),
+        Map.entry("Y_COORD_CD", 15),
+        Map.entry("Latitude", 16),
+        Map.entry("Longitude", 17),
+        Map.entry("Lon_Lat", 18)
+    );
+    
+    public static final int EXPECTED_COLUMN_COUNT = COL.size();
+}
+
