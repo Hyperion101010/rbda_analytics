@@ -6,7 +6,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.nyu.rbda</groupId>
-    <artifactId>nypd-arrests-data</artifactId>
+    <artifactId>nypd-arrests-mr-job</artifactId>
     <version>1.0.0</version>
     <packaging>jar</packaging>
 
@@ -55,6 +55,7 @@
     </dependencies>
 
     <build>
+        <sourceDirectory>.</sourceDirectory>
         <plugins>
             <!-- Compile Java -->
             <plugin>
@@ -64,6 +65,12 @@
                 <configuration>
                     <source>11</source>
                     <target>11</target>
+                    <includes>
+                        <include>**/*.java</include>
+                    </includes>
+                    <excludes>
+                        <exclude>tmp/**</exclude>
+                    </excludes>
                 </configuration>
             </plugin>
 
