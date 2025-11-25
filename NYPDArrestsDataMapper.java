@@ -101,8 +101,12 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, Text, Text
         
         try {
             zipCodeLookup = new ZipCodeLookup(zipcodeFile, conf);
+            System.err.println("Successfully initialized ZipCodeLookup with file: " + zipcodeFile);
         } catch (Exception e) {
-            System.err.println("Warning: Could not load zipcode CSV file: " + e.getMessage());
+            System.err.println("ERROR: Could not load zipcode CSV file: " + zipcodeFile);
+            System.err.println("Exception: " + e.getMessage());
+            e.printStackTrace();
+            System.err.println("Falling back to empty ZipCodeLookup - ALL ZIPCODE LOOKUPS WILL FAIL!");
             zipCodeLookup = new ZipCodeLookup();
         }
     }

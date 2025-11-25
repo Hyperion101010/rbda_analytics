@@ -1,6 +1,7 @@
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVRecord;
 import org.locationtech.jts.geom.Coordinate;
+import org.locationtech.jts.geom.Envelope;
 import org.locationtech.jts.geom.Geometry;
 import org.locationtech.jts.geom.GeometryFactory;
 import org.locationtech.jts.geom.Point;
@@ -69,6 +70,7 @@ public class ZipcodeLookup {
 
             WKTReader wktReader = new WKTReader(geometryFactory);
 
+            int loadedCount = 0;
             for (CSVRecord record : records) {
                 String modZcta = record.get("MODZCTA");    // e.g. "10001"
                 String wkt = record.get("the_geom");       // MULTIPOLYGON(...)
@@ -80,13 +82,20 @@ public class ZipcodeLookup {
 
                 try {
                     Geometry geom = wktReader.read(wkt);
+                    // Ensure geometry is valid (fixes self-intersections, etc.)
+                    if (!geom.isValid()) {
+                        geom = geom.buffer(0); // Fix invalid geometries
+                    }
                     shapes.add(new ZipShape(modZcta, geom));
+                    loadedCount++;
                 } catch (Exception e) {
                     // If one row is bad, skip it but don't kill the whole job
                     System.err.println("Failed to parse WKT for MODZCTA "
                             + modZcta + ": " + e.getMessage());
                 }
             }
+            
+            System.err.println("Loaded " + loadedCount + " zipcode polygons");
             
             // Note: Using simple linear search to match Python implementation exactly
             // Python code: for zip_code, poly in zip_polygons: if poly.contains(point): return zip_code
@@ -114,12 +123,29 @@ public class ZipcodeLookup {
      * @return zipcode string if found, null otherwise
      */
     public String findZipcode(double latitude, double longitude) {
+        // Check if we have any polygons loaded
+        if (shapes.isEmpty()) {
+            return null;
+        }
+        
         // Create Point(lon, lat) - matching Python: Point(lon, lat)
+        // JTS Coordinate: (x, y) = (longitude, latitude)
+        // Python Shapely: Point(lon, lat) also uses x=lon, y=lat
         Point p = geometryFactory.createPoint(new Coordinate(longitude, latitude));
+        
+        // Ensure point is valid
+        if (!p.isValid()) {
+            return null;
+        }
 
         // Simple linear search through all polygons (matching Python exactly)
+        // Python: for zip_code, poly in zip_polygons: if poly.contains(point): return zip_code
         for (ZipShape shape : shapes) {
-            if (shape.geometry.contains(p)) {
+            Geometry geom = shape.geometry;
+            
+            // Exact containment check (matching Python: poly.contains(point))
+            // Note: contains() in JTS matches Shapely's contains()
+            if (geom.contains(p)) {
                 return shape.zipcode;
             }
         }
