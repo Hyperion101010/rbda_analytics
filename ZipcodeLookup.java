@@ -98,7 +98,7 @@ public class ZipcodeLookup {
      * Empty constructor for fallback
      */
     public ZipcodeLookup() {
-        this.shapes = new ArrayList<>();
+        // shapes is already initialized as empty ArrayList
     }
 
     /**
