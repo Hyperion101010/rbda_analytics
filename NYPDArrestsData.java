@@ -6,6 +6,7 @@ import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.mapreduce.lib.output.MultipleOutputs;
 import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
+import org.apache.hadoop.conf.Configuration;
 
 public class NYPDArrestsData {
     public static void main(String[] args) throws Exception {
@@ -48,8 +49,8 @@ public class NYPDArrestsData {
         boolean success = job.waitForCompletion(true);
 
         if(success){
-            int total_row = job.getCounters().findCounter("STATS", "TOTAL_ROWS").getValue();
-            int allowed_row = job.getCounters().findCounter("STATS", "ALLOWED_ROW").getValue();
+            long total_row = job.getCounters().findCounter("STATS", "TOTAL_ROWS").getValue();
+            long allowed_row = job.getCounters().findCounter("STATS", "ALLOWED_ROW").getValue();
             System.out.println("Total Rows Processed: " + total_row);
             System.out.println("Total Allowed Rows: " + allowed_row);
         }

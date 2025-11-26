@@ -34,7 +34,7 @@ import org.locationtech.jts.io.WKTReader;
 
 
 // This is my CSV helper class
-public class csv_col_schema {
+class csv_col_schema {
     public static final LinkedHashMap<String, Integer> nypd_csv_cols = new LinkedHashMap<String, Integer>() {{
     // Insert all the correct columns in correct order for my third party CSV parser
     put("ARREST_KEY", 0);
@@ -69,7 +69,7 @@ public class csv_col_schema {
 // a small tutorial - https://webmonkeyswithlaserbeams.wordpress.com/2008/08/26/java-topology-suite-sweet/
 // I initially tried this approach using shapely in python then I implemeted it in java using JTS
 // my python refereence article - https://www.geopostcodes.com/blog/get-zip-code-from-latitude-and-longitude/
-public class zip_code_util {
+class zip_code_util {
     private static class zip_code_shape_data_type {
         final String zipcode;
         final Geometry geometry;
@@ -323,8 +323,8 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, Text, Text
 
 
         StringBuilder csvLine = new StringBuilder();
-        for (int i = 0; i < final_op_cols.length; i++) {
-            String col = final_op_cols[i];
+        for (int i = 0; i < final_op_cols.size(); i++) {
+            String col = final_op_cols.get(i);
             String val = validated_row_map.getOrDefault(col, "");
 
             // Handle escape characters for CSV
