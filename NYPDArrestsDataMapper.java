@@ -91,11 +91,21 @@ class zip_code_util {
         Path path = new Path(zipcode_shape_file_path);
 
         try {
-            // Open file present on hadoop fs
             InputStream in_stream = fs.open(path);
 
-            BufferedReader br = new BufferedReader(new InputStreamReader(in_stream, StandardCharsets.UTF_8));
+            if (fs.exists(path)) {
+                in_stream = fs.open(path);
+            } else {
+                // Try local filesystem
+                java.io.File localFile = new java.io.File(zipcode_shape_file_path);
+                if (localFile.exists()) {
+                    in_stream = new java.io.FileInputStream(localFile);
+                } else {
+                    throw new IOException("Zipcode CSV file not found: " + zipcode_shape_file_path);
+                }
+            }
 
+            BufferedReader br = new BufferedReader(new InputStreamReader(in_stream, StandardCharsets.UTF_8));
             // Open the zipcode lookup file provided from the above reference link
             Iterable<CSVRecord> records = CSVFormat.DEFAULT.withFirstRecordAsHeader().parse(br);
 
