@@ -6,7 +6,6 @@ import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.mapreduce.lib.output.MultipleOutputs;
 import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
-import org.apache.hadoop.conf.Configuration;
 
 public class NYPDArrestsData {
     public static void main(String[] args) throws Exception {
@@ -22,9 +21,7 @@ public class NYPDArrestsData {
         
         // Setting configurations for zipcode file
         // reference - https://stackoverflow.com/questions/13228922/setting-parameter-in-mapreduce-job-configuration
-        Configuration conf = new Configuration();
-        conf.set("zipcode_lookup_file", args[2]);
-        job.setConfiguration(conf);
+        job.getConfiguration().set("zipcode_lookup_file", args[2]);
 
         FileInputFormat.addInputPath(job, new Path(args[0]));
         FileOutputFormat.setOutputPath(job, new Path(args[1]));
