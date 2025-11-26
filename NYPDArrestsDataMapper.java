@@ -232,7 +232,7 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, Text, Text
         this.csv_parser = new CSVParserBuilder().withSeparator(',').withQuoteChar('"').withEscapeChar('\\').build();
 
         Configuration conf = context.getConfiguration();
-        String my_zip_code_file = conf.get("zipcode_lookup_file");
+        String my_zip_code_file = conf.get("zipcode.lookup.file");
 
         this.zipcode_util_obj = new zip_code_util(my_zip_code_file, conf);
     }

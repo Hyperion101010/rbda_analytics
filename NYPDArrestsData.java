@@ -21,7 +21,7 @@ public class NYPDArrestsData {
         
         // Setting configurations for zipcode file
         // reference - https://stackoverflow.com/questions/13228922/setting-parameter-in-mapreduce-job-configuration
-        job.getConfiguration().set("zipcode_lookup_file", args[2]);
+        job.getConfiguration().set("zipcode.lookup.file", args[2]);
 
         FileInputFormat.addInputPath(job, new Path(args[0]));
         FileOutputFormat.setOutputPath(job, new Path(args[1]));
