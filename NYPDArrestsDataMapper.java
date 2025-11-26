@@ -329,8 +329,6 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, Text, Text
         validated_row_map.remove("Latitude");
         validated_row_map.remove("Longitude");
 
-
-
         StringBuilder csvLine = new StringBuilder();
         for (int i = 0; i < final_op_cols.size(); i++) {
             String col = final_op_cols.get(i);
@@ -351,6 +349,59 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, Text, Text
 
         // From the multiple outputs, write to data named output
         context.write(new Text("DATA:"), new Text(csvLine.toString()));
+
+
+        // Adding some stats around my data
+        String arrestDateStr = validated_row_map.get("ARREST_DATE");
+        if (arrestDateStr != null && !arrestDateStr.isEmpty()) {
+            try {
+                LocalDateTime arrestDate = LocalDateTime.parse(arrestDateStr, output_date_formatter);
+                String year = String.valueOf(arrestDate.getYear());
+                String dateStrFormatted = arrestDate.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+                
+                String borough = validated_row_map.get("ARREST_BORO");
+                String zipcode = validated_row_map.get("ZIPCODE");
+                String lawCat = validated_row_map.get("LAW_CAT_CD");
+                
+                // 1. Total crime per borough per year
+                if (borough != null && !borough.isEmpty()) {
+                    context.write(
+                        new Text("BOROUGH_YEAR:" + borough + ":" + year), 
+                        new Text("1"));
+                }
+                
+                // 2. Total crime per year per zipcode
+                if (zipcode != null && !zipcode.isEmpty()) {
+                    context.write(
+                        new Text("ZIPCODE_YEAR:" + zipcode + ":" + year), 
+                        new Text("1"));
+                }
+                
+                // 3. Highest crime for a single day for each zipcode in a year
+                // Format: ZIPCODE_YEAR_DAY:zipcode:year:date
+                if (zipcode != null && !zipcode.isEmpty()) {
+                    context.write(
+                        new Text("ZIPCODE_YEAR_DAY:" + zipcode + ":" + year + ":" + dateStrFormatted), 
+                        new Text("1"));
+                }
+                
+                // 4. Zipcode with the lowest crime throughout (total across all years)
+                if (zipcode != null && !zipcode.isEmpty()) {
+                    context.write(
+                        new Text("ZIPCODE_TOTAL:" + zipcode), 
+                        new Text("1"));
+                }
+                
+                // 5. Zipcode with lowest Misdemeanor crimes throughout
+                if (zipcode != null && !zipcode.isEmpty() && 
+                    lawCat != null && lawCat.equalsIgnoreCase("Misdemeanor")) {
+                    context.write(
+                        new Text("ZIPCODE_MISDEMEANOR:" + zipcode), 
+                        new Text("1"));
+                }
+            } catch (DateTimeParseException e) {
+            }
+        }
     }
 
 

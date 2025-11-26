@@ -19,7 +19,13 @@ public class NYPDArrestsDataReducer extends Reducer<Text, Text, NullWritable, Te
 
         String key_val = key.toString();
 
-        if (key_val.equals("DATA:")) {
+        if (key_val.startsWith("BOROUGH_YEAR:") || key_val.startsWith("ZIPCODE_YEAR:") || key_val.startsWith("ZIPCODE_YEAR_DAY:") || key_val.startsWith("ZIPCODE_TOTAL:") || key_val.startsWith("ZIPCODE_MISDEMEANOR:")) {
+            long count = 0;
+            for (Text value : values) {
+                count++;
+            }
+            multipleOutputs.write("stats", key, new Text(String.valueOf(count)));
+        } else if (key_val.equals("DATA:")) {
             for (Text value : values) {
                 multipleOutputs.write("data", NullWritable.get(), value);
             }
