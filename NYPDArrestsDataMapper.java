@@ -352,51 +352,44 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, Text, Text
 
 
         // Adding some stats around my data
-        String arrestDateStr = validated_row_map.get("ARREST_DATE");
-        if (arrestDateStr != null && !arrestDateStr.isEmpty()) {
+        String arr_dt_str = validated_row_map.get("ARREST_DATE");
+        if (arr_dt_str != null && !arr_dt_str.isEmpty()) {
             try {
-                LocalDateTime arrestDate = LocalDateTime.parse(arrestDateStr, output_date_formatter);
-                String year = String.valueOf(arrestDate.getYear());
-                String dateStrFormatted = arrestDate.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
-                
+                LocalDateTime arr_dt = LocalDateTime.parse(arr_dt_str, output_date_formatter);
+                String year = String.valueOf(arr_dt.getYear());
+                String date_fmt = arr_dt.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+
                 String borough = validated_row_map.get("ARREST_BORO");
                 String zipcode = validated_row_map.get("ZIPCODE");
-                String lawCat = validated_row_map.get("LAW_CAT_CD");
+                String lw_ct = validated_row_map.get("LAW_CAT_CD");
                 
-                // 1. Total crime per borough per year
+                // Total crime per borough per year
                 if (borough != null && !borough.isEmpty()) {
-                    context.write(
-                        new Text("BOROUGH_YEAR:" + borough + ":" + year), 
-                        new Text("1"));
+                    context.write(new Text("BOROUGH_YEAR:" + borough + ":" + year), new Text("1"));
                 }
                 
-                // 2. Total crime per year per zipcode
+                // Zipcode with the lowest crime throughout (total across all years)
                 if (zipcode != null && !zipcode.isEmpty()) {
-                    context.write(
-                        new Text("ZIPCODE_YEAR:" + zipcode + ":" + year), 
-                        new Text("1"));
+                    context.write(new Text("ZIPCODE_TOTAL:" + zipcode), new Text("1"));
                 }
                 
-                // 3. Highest crime for a single day for each zipcode in a year
-                // Format: ZIPCODE_YEAR_DAY:zipcode:year:date
-                if (zipcode != null && !zipcode.isEmpty()) {
-                    context.write(
-                        new Text("ZIPCODE_YEAR_DAY:" + zipcode + ":" + year + ":" + dateStrFormatted), 
-                        new Text("1"));
+                // Zipcode with lowest Misdemeanor crimes throughout
+                if (zipcode != null && !zipcode.isEmpty() && lw_ct != null && lw_ct.equals("Misdemeanor")) {
+                    context.write(new Text("ZIPCODE_MISDEMEANOR:" + zipcode), new Text("1"));
                 }
-                
-                // 4. Zipcode with the lowest crime throughout (total across all years)
-                if (zipcode != null && !zipcode.isEmpty()) {
-                    context.write(
-                        new Text("ZIPCODE_TOTAL:" + zipcode), 
-                        new Text("1"));
+
+                // Count the total pers per gender for the year
+                String perp_gender = validated_row_map.get("PERP_SEX");
+                if (perp_gender != null && !perp_gender.isEmpty() && (perp_gender.equalsIgnoreCase("M") || perp_gender.equalsIgnoreCase("F"))) {
+                    String gender = perp_gender.toUpperCase();
+                    context.write(new Text("GENDER_YEAR:" + gender + ":" + year), new Text("1"));
                 }
-                
-                // 5. Zipcode with lowest Misdemeanor crimes throughout
-                if (zipcode != null && !zipcode.isEmpty() && 
-                    lawCat != null && lawCat.equalsIgnoreCase("Misdemeanor")) {
+
+                // Count the total persons per age group
+                String ag_grp = validated_row_map.get("AGE_GROUP");
+                if (ag_grp != null && !ag_grp.isEmpty()) {
                     context.write(
-                        new Text("ZIPCODE_MISDEMEANOR:" + zipcode), 
+                        new Text("AGE_GROUP:" + ag_grp), 
                         new Text("1"));
                 }
             } catch (DateTimeParseException e) {
