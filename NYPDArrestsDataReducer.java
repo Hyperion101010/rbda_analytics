@@ -15,20 +15,11 @@ public class NYPDArrestsDataReducer extends Reducer<Text, Text, NullWritable, Te
     }
 
     @Override
-    public void reduce(Text key, Iterable<Text> values, Context context) 
-            throws IOException, InterruptedException {
+    public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
 
-        String keyStr = key.toString();
-        
-        // If it's a stats key, aggregate and write to stats output
-        if (keyStr.startsWith("BOROUGH_YEAR:") || keyStr.startsWith("DAILY:")) {
-            long count = 0;
-            for (Text value : values) {
-                count++;
-            }
-            multipleOutputs.write("stats", key, new Text(String.valueOf(count)));
-        } else if (keyStr.equals("DATA:")) {
-            // It's data, pass through to data output
+        String key_val = key.toString();
+
+        if (key_val.equals("DATA:")) {
             for (Text value : values) {
                 multipleOutputs.write("data", NullWritable.get(), value);
             }

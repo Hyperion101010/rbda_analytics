@@ -19,19 +19,12 @@ public class NYPDArrestsData {
         job.setJarByClass(NYPDArrestsData.class);
         job.setJobName("NYPD Arrests Data Processing");
         
-        // Set zipcode file path in configuration
-        System.out.println("=== ZIPCODE FILE CONFIGURATION ===");
-        System.out.println("Before setting: zipcode.bounds.file = " + 
-            job.getConfiguration().get("zipcode.bounds.file"));
-        System.out.println("Setting zipcode file path from args[2]: " + args[2]);
-        
-        job.getConfiguration().set("zipcode.bounds.file", args[2]);
-        
-        System.out.println("After setting: zipcode.bounds.file = " + 
-            job.getConfiguration().get("zipcode.bounds.file"));
-        System.out.println("===================================");
-        System.out.println();
-        
+        // Setting configurations for zipcode file
+        // reference - https://stackoverflow.com/questions/13228922/setting-parameter-in-mapreduce-job-configuration
+        Configuration conf = new Configuration();
+        conf.set("zipcode_lookup_file", args[2]);
+        job.setConfiguration(conf);
+
         FileInputFormat.addInputPath(job, new Path(args[0]));
         FileOutputFormat.setOutputPath(job, new Path(args[1]));
 
@@ -39,28 +32,28 @@ public class NYPDArrestsData {
         job.setReducerClass(NYPDArrestsDataReducer.class);
         job.setNumReduceTasks(1);
 
+        // This enables me to define specific output types for mapper and reducer
+        // Since my mapper and reducer output types differ
+        // reference - https://stackoverflow.com/questions/38376688/why-setmapoutputkeyclass-method-is-necessary-in-mapreduce-job
         job.setMapOutputKeyClass(Text.class);
         job.setMapOutputValueClass(Text.class);
         job.setOutputKeyClass(NullWritable.class);
         job.setOutputValueClass(Text.class);
         
-        MultipleOutputs.addNamedOutput(job, "data", TextOutputFormat.class, 
-            NullWritable.class, Text.class);
-        MultipleOutputs.addNamedOutput(job, "stats", TextOutputFormat.class, 
-            Text.class, Text.class);
-        
+        // Write to data for my data output
+        // Write to stats for my statistics information
+        MultipleOutputs.addNamedOutput(job, "data", TextOutputFormat.class, NullWritable.class, Text.class);
+        MultipleOutputs.addNamedOutput(job, "stats", TextOutputFormat.class, Text.class, Text.class);
+
         boolean success = job.waitForCompletion(true);
-        
-        if (success) {
-            System.out.println("\n=== STATISTICS ===");
-            System.out.println("Total Rows Processed: " + 
-                job.getCounters().findCounter("STATS", "TOTAL_ROWS").getValue());
-            System.out.println("Total Rows Dropped: " + 
-                job.getCounters().findCounter("STATS", "DROPPED_ROWS").getValue());
-            System.out.println("Invalid ZIPCODEs: " + 
-                job.getCounters().findCounter("STATS", "INVALID_ZIPCODES").getValue());
+
+        if(success){
+            int total_row = job.getCounters().findCounter("STATS", "TOTAL_ROWS").getValue();
+            int allowed_row = job.getCounters().findCounter("STATS", "ALLOWED_ROW").getValue();
+            System.out.println("Total Rows Processed: " + total_row);
+            System.out.println("Total Allowed Rows: " + allowed_row);
         }
-        
+
         System.exit(success ? 0 : 1);
     }
 }
