@@ -139,25 +139,25 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, Text, Text
 
     // reference - https://data.cityofnewyork.us/Public-Safety/NYPD-Arrests-Data-Historic-/8h9b-rp9u/about_data
     private static final LinkedHashMap<String, String> dataset_schema = new LinkedHashMap<String, String>() {{
-        put("ARREST_KEY", "TEXT"),
-        put("ARREST_DATE", "TIMESTAMP"),
-        put("PD_CD", "NUMBER"),
-        put("PD_DESC", "TEXT"),
-        put("KY_CD", "NUMBER"),
-        put("OFNS_DESC", "TEXT"),
-        put("LAW_CODE", "TEXT"),
-        put("LAW_CAT_CD", "TEXT"),
-        put("ARREST_BORO", "TEXT"),
-        put("ARREST_PRECINCT", "NUMBER"),
-        put("JURISDICTION_CODE", "NUMBER"),
-        put("AGE_GROUP", "TEXT"),
-        put("PERP_SEX", "TEXT"),
-        put("PERP_RACE", "TEXT"),
-        put("X_COORD_CD", "TEXT"),
-        put("Y_COORD_CD", "TEXT"),
-        put("Latitude", "NUMBER"),
-        put("Longitude", "NUMBER"),
-        put("Lon_Lat", "POINT")
+        put("ARREST_KEY", "TEXT");
+        put("ARREST_DATE", "TIMESTAMP");
+        put("PD_CD", "NUMBER");
+        put("PD_DESC", "TEXT");
+        put("KY_CD", "NUMBER");
+        put("OFNS_DESC", "TEXT");
+        put("LAW_CODE", "TEXT");
+        put("LAW_CAT_CD", "TEXT");
+        put("ARREST_BORO", "TEXT");
+        put("ARREST_PRECINCT", "NUMBER");
+        put("JURISDICTION_CODE", "NUMBER");
+        put("AGE_GROUP", "TEXT");
+        put("PERP_SEX", "TEXT");
+        put("PERP_RACE", "TEXT");
+        put("X_COORD_CD", "TEXT");
+        put("Y_COORD_CD", "TEXT");
+        put("Latitude", "NUMBER");
+        put("Longitude", "NUMBER");
+        put("Lon_Lat", "POINT");
     }};
 
     // These fields won't be used by me so I am dropping them.
