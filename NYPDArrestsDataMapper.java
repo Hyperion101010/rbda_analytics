@@ -87,16 +87,13 @@ class zip_code_util {
 
         // Get the zipcode lookup file.
         // reference - https://data.cityofnewyork.us/Health/Modified-Zip-Code-Tabulation-Areas-MODZCTA-/pri4-ifjk/about_data
-        FileSystem fs = FileSystem.get(conf);
         Path path = new Path(zipcode_shape_file_path);
-
+        FileSystem fs = path.getFileSystem(conf);
+        InputStream in_stream = null;
         try {
-            InputStream in_stream = fs.open(path);
-
             if (fs.exists(path)) {
                 in_stream = fs.open(path);
             } else {
-                // Try local filesystem
                 java.io.File localFile = new java.io.File(zipcode_shape_file_path);
                 if (localFile.exists()) {
                     in_stream = new java.io.FileInputStream(localFile);
@@ -129,7 +126,9 @@ class zip_code_util {
                 }
             }
         } finally {
-            fs.close();
+            if (in_stream != null) {
+                in_stream.close();
+            }
         }
     }
 
