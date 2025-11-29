@@ -14,7 +14,18 @@ public class NYPDArrestsDataReducer extends Reducer<Text, Text, NullWritable, Te
 
     @Override
     protected void setup(Context context) throws IOException, InterruptedException {
+        super.setup(context);
+
         multipleOutputs = new MultipleOutputs<>(context);
+
+        // Add CSV header at the start of the data output file
+        String[] csv_header = {
+            "ARREST_KEY", "ARREST_DATE", "OFNS_DESC", "PD_CD", "KY_CD", "LAW_CAT_CD",
+            "ARREST_BORO", "ARREST_PRECINCT", "AGE_GROUP", "AGE_MIN", "AGE_MAX",
+            "PERP_SEX", "JURISDICTION_CODE", "PD_DESC", "LAW_CODE", "ZIPCODE"
+        };
+        String header_line = String.join(",", csv_header);
+        multipleOutputs.write("data", NullWritable.get(), new Text(header_line));
     }
 
     @Override

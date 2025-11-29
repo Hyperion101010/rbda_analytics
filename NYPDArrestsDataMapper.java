@@ -65,7 +65,7 @@ class csv_col_schema {
 // This is my zipcode utility class
 
 // JTS suite for vector geometry operations
-// reference - https://github.com/locationtech/jts
+// link - https://github.com/locationtech/jts
 // a small tutorial - https://webmonkeyswithlaserbeams.wordpress.com/2008/08/26/java-topology-suite-sweet/
 // I initially tried this approach using shapely in python then I implemeted it in java using JTS
 // my python refereence article - https://www.geopostcodes.com/blog/get-zip-code-from-latitude-and-longitude/
@@ -86,7 +86,7 @@ class zip_code_util {
     public zip_code_util(String zipcode_shape_file_path, Configuration conf) throws IOException {
 
         // Get the zipcode lookup file.
-        // reference - https://data.cityofnewyork.us/Health/Modified-Zip-Code-Tabulation-Areas-MODZCTA-/pri4-ifjk/about_data
+        // link - https://data.cityofnewyork.us/Health/Modified-Zip-Code-Tabulation-Areas-MODZCTA-/pri4-ifjk/about_data
         Path path = new Path(zipcode_shape_file_path);
         FileSystem fs = path.getFileSystem(conf);
         InputStream in_stream = null;
@@ -103,11 +103,11 @@ class zip_code_util {
             }
 
             BufferedReader br = new BufferedReader(new InputStreamReader(in_stream, StandardCharsets.UTF_8));
-            // Open the zipcode lookup file provided from the above reference link
+            // Open the zipcode lookup file provided from the above link
             Iterable<CSVRecord> records = CSVFormat.DEFAULT.withFirstRecordAsHeader().parse(br);
 
             // Needed for parsing the geometry of the zipcode shapes
-            // reference - https://locationtech.github.io/jts/javadoc/org/locationtech/jts/io/WKTReader.html
+            // link - https://locationtech.github.io/jts/javadoc/org/locationtech/jts/io/WKTReader.html
             WKTReader wkt_reader = new WKTReader();
 
             for(CSVRecord record : records) {
@@ -146,7 +146,7 @@ class zip_code_util {
 
 public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, Text, Text> {
 
-    // reference - https://data.cityofnewyork.us/Public-Safety/NYPD-Arrests-Data-Historic-/8h9b-rp9u/about_data
+    // link - https://data.cityofnewyork.us/Public-Safety/NYPD-Arrests-Data-Historic-/8h9b-rp9u/about_data
     private static final LinkedHashMap<String, String> dataset_schema = new LinkedHashMap<String, String>() {{
         put("ARREST_KEY", "TEXT");
         put("ARREST_DATE", "TIMESTAMP");
@@ -183,7 +183,7 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, Text, Text
     public static final LocalDateTime threshold_date = LocalDateTime.of(2015, 1, 1, 0, 0, 0);
 
     // Defined in the dataset page
-    // reference - https://data.cityofnewyork.us/Public-Safety/NYPD-Arrests-Data-Historic-/8h9b-rp9u/about_data
+    // link - https://data.cityofnewyork.us/Public-Safety/NYPD-Arrests-Data-Historic-/8h9b-rp9u/about_data
     private static final Map<String, String> keyword_to_boro_map = new LinkedHashMap<String, String>() {{
         put("K", "Brooklyn");
         put("Q", "Queens");
@@ -226,7 +226,7 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, Text, Text
     protected void setup(Context context) throws IOException, InterruptedException {
         super.setup(context);
         
-        // reference - https://commons.apache.org/proper/commons-csv/apidocs/org/apache/commons/csv/CSVParser.html
+        // link - https://commons.apache.org/proper/commons-csv/apidocs/org/apache/commons/csv/CSVParser.html
         // need the quote char to be double as some of my entries in csv have double quotes
         this.csv_parser = new CSVParserBuilder().withSeparator(',').withQuoteChar('"').withEscapeChar('\\').build();
 
@@ -334,7 +334,6 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, Text, Text
             String col = final_op_cols.get(i);
             String val = validated_row_map.getOrDefault(col, "");
 
-            // Handle escape characters for CSV
             if (val.contains(",") || val.contains("\"") || val.contains("\n")) {
                 val = "\"" + val.replace("\"", "\"\"") + "\"";
             }
@@ -414,7 +413,6 @@ public class NYPDArrestsDataMapper extends Mapper<LongWritable, Text, Text, Text
             if(col_to_drop.contains(col_name)) {
                 continue;
             }
-
 
             // Now lets check each col one by one
             if(col_name.equals("ARREST_DATE")) {
