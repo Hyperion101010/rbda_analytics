@@ -6,7 +6,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>ssb10002</groupId>
-    <artifactId>nypd-arrests-mr-job</artifactId>
+    <artifactId>nypd-arrests</artifactId>
     <version>1.0</version>
 
     <name>NYPD Arrests Data Processing</name>
